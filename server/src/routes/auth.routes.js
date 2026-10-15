@@ -93,3 +93,67 @@ router.post(
 );
 
 module.exports = router;
+
+const loginSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1).max(72),
+});
+
+router.post(
+  '/login',
+  validate({ body: loginSchema }),
+  async (req, res, next) => {
+    try {
+      const { email, password } = req.validated.body;
+
+      const user = await User.findOne({
+        email: email.toLowerCase(),
+      }).select('+passwordHash');
+
+      if (!user) {
+        throw AppError.unauthorized('Invalid email or password');
+      }
+
+      const passwordMatches = await bcrypt.compare(
+        password,
+        user.passwordHash
+      );
+
+      if (!passwordMatches) {
+        throw AppError.unauthorized('Invalid email or password');
+      }
+
+      const membership = await Membership.findOne({
+        user: user._id,
+        role: 'owner',
+      }).populate('business', 'name');
+
+      if (!membership || !membership.business) {
+        throw AppError.unauthorized('No business access found for this account');
+      }
+
+      const token = jwt.sign(
+        { sub: user._id.toString() },
+        req.app.locals.config.JWT_SECRET,
+        { expiresIn: req.app.locals.config.JWT_EXPIRES_IN }
+      );
+
+      return res.status(200).json({
+        message: 'Login successful',
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+        },
+        business: {
+          id: membership.business._id,
+          name: membership.business.name,
+          role: membership.role,
+        },
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
