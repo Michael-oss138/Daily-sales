@@ -10,6 +10,7 @@ function createApp(config) {
   const app = express();
   app.disable('x-powered-by');
   app.set('env', config.NODE_ENV);
+  app.locals.config = config;
 
   app.use(helmet());
   app.use(
